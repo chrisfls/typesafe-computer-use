@@ -8,13 +8,13 @@ own argument checks run: nothing it could start is there to start.
 from __future__ import annotations
 
 import ast
-import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from _shell_support import BASH, allow_local_shell_processes, shell_env
 
 REPO = Path(__file__).resolve().parent.parent
 SCRIPT = REPO / "scripts" / "osworld"
@@ -24,12 +24,13 @@ RUNNER = OVERLAY / "scripts" / "python" / "run_multienv_jev.py"
 LUNA_AGENT = OVERLAY / "mm_agents" / "luna_agent.py"
 LUNA_RUNNER = OVERLAY / "scripts" / "python" / "run_multienv_luna.py"
 POPEN = subprocess.Popen  # the real one, before tests/conftest.py refuses it for every test
+pytestmark = pytest.mark.skipif(BASH is None, reason="GNU Bash is required to test these scripts")
 
 
 @pytest.fixture
 def processes(monkeypatch):
     """These tests run bash, on files only; tests/conftest.py refuses every process by default."""
-    monkeypatch.setattr(subprocess, "Popen", POPEN)
+    allow_local_shell_processes(monkeypatch, POPEN)
 
 
 def tree(path: Path) -> ast.Module:
@@ -153,7 +154,7 @@ def test_the_luna_agent_only_adds_a_meter():
 
 
 def test_the_script_parses(processes):
-    subprocess.run(["bash", "-n", str(SCRIPT)], check=True)
+    subprocess.run([BASH, "-n", str(SCRIPT)], check=True)
 
 
 @pytest.mark.skipif(shutil.which("shellcheck") is None, reason="shellcheck is not installed")
@@ -170,10 +171,10 @@ def script(tmp_path: Path, processes):
     (tmp_path / "scripts").mkdir()
     copy = tmp_path / "scripts" / "osworld"
     shutil.copy2(SCRIPT, copy)
-    env = {"PATH": os.environ["PATH"], "HOME": str(tmp_path)}
+    env = shell_env(home=tmp_path)
 
     def run(*args: str) -> subprocess.CompletedProcess:
-        return subprocess.run(["bash", str(copy), *args], capture_output=True, text=True, env=env, timeout=30)
+        return subprocess.run([BASH, str(copy), *args], capture_output=True, text=True, env=env, timeout=30)
 
     return run
 

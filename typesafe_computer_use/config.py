@@ -17,7 +17,7 @@ DEFAULT_WRITER_MODEL = "claude-haiku-4-5"
 DEFAULT_ANSWER_MODEL = "claude-sonnet-5"  # runs only when the classifier stops, on a screenshot: worth a stronger reader
 DEFAULT_BROWSER = "Google Chrome"
 ANTHROPIC_HOST = "api.anthropic.com"
-WRITER_APIS = ("anthropic", "openai")
+WRITER_APIS = ("anthropic", "openai", "fara")
 
 # Sites the classifier can pick by name. Anything else goes through the writer.
 SITES: dict[str, str] = {
@@ -53,7 +53,7 @@ def writer_model() -> str:
 
 
 def writer_api() -> str:
-    """The API the writer's endpoint speaks: `anthropic` (Messages) or `openai` (Chat Completions)."""
+    """The writer endpoint protocol: Anthropic Messages, OpenAI Chat Completions, or Fara tool calls."""
     api = os.environ.get("CLICKER_WRITER_API", "").strip().lower() or "anthropic"
     if api not in WRITER_APIS:
         raise ValueError(f"CLICKER_WRITER_API must be one of {', '.join(WRITER_APIS)}, not {api!r}")
@@ -72,7 +72,7 @@ def writer_base_url() -> str | None:
     if not raw:
         return None
     base = raw.strip().rstrip("/")
-    suffixes = ("/chat/completions",) if writer_api() == "openai" else ("/v1/messages", "/messages", "/v1")
+    suffixes = ("/chat/completions",) if writer_api() in ("openai", "fara") else ("/v1/messages", "/messages", "/v1")
     for suffix in suffixes:
         if base.endswith(suffix):
             base = base[: -len(suffix)]
@@ -82,7 +82,7 @@ def writer_base_url() -> str | None:
 
 def custom_writer_endpoint() -> bool:
     """Whether the writer talks to anything but Anthropic's own API, by either variable."""
-    if writer_api() == "openai":
+    if writer_api() in ("openai", "fara"):
         return True
     url = writer_base_url() or os.environ.get("ANTHROPIC_BASE_URL")
     return bool(url) and urlparse(url).hostname != ANTHROPIC_HOST

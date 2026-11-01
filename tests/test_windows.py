@@ -28,6 +28,7 @@ def test_control_types_map_onto_the_roles_the_shared_code_knows():
     assert role_for("ButtonControl") == "AXButton"
     assert role_for("HyperlinkControl") == "AXLink"
     assert role_for("EditControl") in TEXT_ROLES  # a focused edit box is a text field
+    assert role_for("DocumentControl") == "AXTextArea"  # a focused rich-text document accepts multiline text
     assert role_for("ComboBoxControl") in TEXT_ROLES
     assert role_for("TextControl") == "AXStaticText"  # where a list row's label is recovered from
 

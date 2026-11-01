@@ -85,8 +85,11 @@ def test_corner_abort_stops_an_app_switch_before_any_applescript(action, monkeyp
 
 
 def test_pending_abort_after_a_decision_prevents_dispatch(screen, monkeypatch):
-    monkeypatch.setattr(macos, "mouse_location", lambda: (0, 0))
-    monkeypatch.setattr(macos, "press", lambda *a: pytest.fail("must not submit after abort"))
+    def abort_before_dispatch():
+        raise Abort
+
+    monkeypatch.setattr(actions.desktop, "check_abort", abort_before_dispatch)
+    monkeypatch.setattr(actions.desktop, "press", lambda *a: pytest.fail("must not submit after abort"))
     with pytest.raises(Abort):
         actions.perform(SimpleNamespace(chosen="press_enter"), screen, [], None)
 

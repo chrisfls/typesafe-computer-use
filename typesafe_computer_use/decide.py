@@ -59,11 +59,32 @@ def fixed_actions(browser: str, email: str | None) -> dict[str, str]:
     return actions
 
 
-def kind_criteria(browser: str, email: str | None, offscreen: bool = False) -> dict[str, str]:
+def back_is_available(last_action: str | None, screen_changed: bool) -> bool:
+    """Offer Back only when a navigation-like action actually changed the screen."""
+    if not last_action or not screen_changed:
+        return False
+    last = last_action.lower()
+    return (
+        last.startswith(("opened ", "went back", "pressed return", "pressed '", 'pressed "'))
+        or last.startswith("clicked ")
+        or " then clicked " in last
+        or (last.startswith("typed ") and "pressed return" in last)
+    )
+
+
+def kind_criteria(
+    browser: str,
+    email: str | None,
+    offscreen: bool = False,
+    can_go_back: bool = False,
+) -> dict[str, str]:
     clicks = {"click_item": "Click one of the on-screen text items (chosen in the item question)."}
     if offscreen:
         clicks["press_offscreen"] = PRESS_OFFSCREEN
-    return {**clicks, **fixed_actions(browser, email)}
+    actions = fixed_actions(browser, email)
+    if not can_go_back:
+        actions.pop("go_back")
+    return {**clicks, **actions}
 
 
 ROW_MATES = 3  # how many neighbours name a duplicated item's row in a criterion; the history line takes them all
@@ -212,7 +233,15 @@ def decide(
     email: str | None,
     tried: list[str] | None = None,
     guidance: Guidance | None = None,
+    can_go_back: bool = False,
 ) -> Decision:
+    focused_text_hint = ""
+    if screen.field and screen.field.is_text:
+        label = f" {screen.field.label!r}" if screen.field.label else ""
+        focused_text_hint = (
+            f" A text field{label} is already focused. If the goal asks to enter text there, choose type_text now; "
+            "do not click another control or tab first."
+        )
     questions = {
         "kind": Choice(
             instructions=(
@@ -220,9 +249,10 @@ def decide(
                 "makes the most progress toward the goal right now? Do not repeat an action "
                 "that was just taken unless the screen changed, and never one listed as already "
                 "tried on this screen: each of those led straight back here."
+                + focused_text_hint
                 + (FOCUS_RULE if guidance and guidance.focus else "")
             ),
-            criteria=kind_criteria(browser, email, bool(screen.offscreen)),
+            criteria=kind_criteria(browser, email, bool(screen.offscreen), can_go_back),
         ),
         "site": Choice(
             instructions=(

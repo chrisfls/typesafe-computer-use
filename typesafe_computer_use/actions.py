@@ -192,7 +192,15 @@ def _type_text(decision, screen: Screen, items, ctx: Context) -> str:
         desktop.press("return")
         return f"typed {text!r} into {screen.field.label!r} {how} and pressed Return"
     time.sleep(0.3)
-    p = verify_typed(ctx.typesafe, ctx.goal, screen.field, text, desktop.focused_field())
+    field_after = desktop.focused_field()
+    read_back_matches = bool(
+        screen.field.role == "AXTextArea"
+        and field_after
+        and field_after.role == screen.field.role
+        and field_after.label == screen.field.label
+        and field_after.value == text
+    )
+    p = 1.0 if read_back_matches else verify_typed(ctx.typesafe, ctx.goal, screen.field, text, field_after)
     if p < VERIFY_THRESHOLD:
         recovery = "restored previous value" if restore_field(screen.field, text) else "could not safely restore previous value"
         return f"typed {text!r} into {screen.field.label!r} {how} but verification failed ({p:.2f}); {recovery}"

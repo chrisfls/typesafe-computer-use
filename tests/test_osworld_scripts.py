@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 import pytest
+from _shell_support import BASH, allow_local_shell_processes, shell_env, shell_path
 
 ROOT = Path(__file__).resolve().parent.parent
 OSWORLD = ROOT / "scripts" / "osworld"
@@ -20,13 +21,13 @@ OSWORLD_GCP = ROOT / "scripts" / "osworld-gcp"
 
 POPEN = subprocess.Popen  # the real one, before tests/conftest.py refuses it for every test
 
-pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="the scripts are bash")
+pytestmark = pytest.mark.skipif(BASH is None, reason="GNU Bash is required to test these scripts")
 
 
 @pytest.fixture(autouse=True)
 def processes(monkeypatch):
     """These tests run bash on files only; tests/conftest.py refuses every process by default."""
-    monkeypatch.setattr(subprocess, "Popen", POPEN)
+    allow_local_shell_processes(monkeypatch, POPEN)
 
 
 def function(script: Path, name: str) -> str:
@@ -39,7 +40,7 @@ def function(script: Path, name: str) -> str:
 def task_list(tmp_path: Path, *tasks: str) -> tuple[Path, dict]:
     source = function(OSWORLD, "task_meta")
     out = subprocess.run(
-        ["bash", "-c", f'set -euo pipefail; REPO="$1"; shift; {source}\ntask_meta "$@"', "bash", str(tmp_path), *tasks],
+        [BASH, "-c", f'set -euo pipefail; REPO="$1"; shift; {source}\ntask_meta "$@"', "bash", str(tmp_path), *tasks],
         capture_output=True,
         text=True,
         check=True,
@@ -84,12 +85,12 @@ def dry_run(tmp_path: Path, *args: str) -> str:
         '{\n  "project": "p",\n  "zone": "z",\n  "instance": "osworld",\n  "ssh": "iap"\n}\n'
     )
     out = subprocess.run(
-        ["bash", str(tmp_path / "scripts" / "osworld-gcp"), "--dry-run", *args],
+        [BASH, str(tmp_path / "scripts" / "osworld-gcp"), "--dry-run", *args],
         capture_output=True,
         text=True,
         check=True,
         cwd=tmp_path,
-        env={"PATH": f"{shims}:/usr/bin:/bin", "HOME": str(tmp_path)},
+        env=shell_env(shims, home=tmp_path),
     )
     return out.stderr
 
@@ -122,19 +123,19 @@ def test_the_detached_start_returns_at_once_and_leaves_its_pid_log_and_status(tm
     source = "\n".join(function(OSWORLD_GCP, name) for name in ("quote", "detach_command"))
     command = subprocess.run(
         [
-            "bash",
+            BASH,
             "-c",
             f'RUNS_DIR=.osworld/runs\n{source}\ndetach_command "$1" run1 "scripts/osworld run-jev chrome/a"',
             "bash",
-            str(repo),
+            shell_path(repo),
         ],
         capture_output=True,
         text=True,
         check=True,
     ).stdout
-    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path)}
+    env = shell_env(bin_dir, home=tmp_path)
     started = time.monotonic()
-    out = subprocess.run(["bash", "-c", command], capture_output=True, text=True, check=True, env=env, timeout=10)
+    out = subprocess.run([BASH, "-c", command], capture_output=True, text=True, check=True, env=env, timeout=10)
     assert time.monotonic() - started < 0.9, "the start returns before the run ends"
     runs = repo / ".osworld" / "runs"
     assert out.stdout.strip() == (runs / "run1.pid").read_text().strip()
@@ -158,11 +159,12 @@ def provenance(repo: Path) -> dict:
     assert unsynced, "osworld-gcp has no UNSYNCED"
     source = "\n".join(function(OSWORLD_GCP, name) for name in ("provenance", "diff_digest"))
     out = subprocess.run(
-        ["bash", "-c", f"set -euo pipefail; INSTANCE=m\n{unsynced.group(0)}\n{source}\nprovenance run1 'run-luna chrome/a'"],
+        [BASH, "-c", f"set -euo pipefail; INSTANCE=m\n{unsynced.group(0)}\n{source}\nprovenance run1 'run-luna chrome/a'"],
         capture_output=True,
         text=True,
         check=True,
         cwd=repo,
+        env=shell_env(home=repo),
     )
     return json.loads(out.stdout)
 
@@ -244,10 +246,10 @@ def follow_with(tmp_path: Path, machine: str) -> subprocess.CompletedProcess:
         f"STOPPED_UNDER_RUN={stopped_under_run()}\n"
     )
     return subprocess.run(
-        ["bash", "-c", f'{setup}{source}\nstatus=0; follow run1 4242 || status=$?; echo "follow returned $status"'],
+        [BASH, "-c", f'{setup}{source}\nstatus=0; follow run1 4242 || status=$?; echo "follow returned $status"'],
         capture_output=True,
         text=True,
-        env={"PATH": f"{shims}:/usr/bin:/bin", "HOME": str(tmp_path)},
+        env=shell_env(shims, home=tmp_path),
         timeout=30,
     )
 
@@ -286,7 +288,8 @@ def test_a_pull_the_tunnel_drops_is_tried_again(tmp_path):
     shims = tmp_path / "bin"
     shims.mkdir()
     tries = tmp_path / "tries"
-    (shims / "rsync").write_text(f'#!/bin/sh\necho x >> {tries}\n[ "$(wc -l < {tries})" -ge 3 ]\n')
+    tries_shell = shell_path(tries)
+    (shims / "rsync").write_text(f'#!/bin/sh\necho x >> {tries_shell}\n[ "$(wc -l < {tries_shell})" -ge 3 ]\n')
     (shims / "rsync").chmod(0o755)
     source = "\n".join(
         [one_line(OSWORLD_GCP, name) for name in ("say", "show")]
@@ -297,11 +300,11 @@ def test_a_pull_the_tunnel_drops_is_tried_again(tmp_path):
     def pull(limit: int) -> subprocess.CompletedProcess:
         tries.write_text("")
         return subprocess.run(
-            ["bash", "-c", f'{setup}PULL_TRIES={limit}\n{source}\npull_results && echo pulled || echo "not pulled"'],
+            [BASH, "-c", f'{setup}PULL_TRIES={limit}\n{source}\npull_results && echo pulled || echo "not pulled"'],
             capture_output=True,
             text=True,
             cwd=tmp_path,
-            env={"PATH": f"{shims}:/usr/bin:/bin", "HOME": str(tmp_path)},
+            env=shell_env(shims, home=tmp_path),
             timeout=30,
         )
 
@@ -330,14 +333,14 @@ def test_a_run_whose_results_did_not_come_back_records_no_rows(tmp_path):
     )
     out = subprocess.run(
         [
-            "bash",
+            BASH,
             "-c",
             f"set -euo pipefail; DRY_RUN=false; TASK_PATTERN='^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'\n{source}\n{stubs}"
             'status=0; run_task run-jev chrome/a --ocr rapidocr || status=$?; echo "run_task returned $status"',
         ],
         capture_output=True,
         text=True,
-        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)},
+        env=shell_env(home=tmp_path),
         timeout=30,
     )
     assert out.stdout.strip() == "run_task returned 1", out.stderr

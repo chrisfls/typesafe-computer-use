@@ -24,6 +24,7 @@ from .config import (
     writer_vision,
 )
 from .dates import now_context
+from .fara_writer import FaraWriter, FaraWriterError
 from .models import Guidance, Item, Screen
 from .openai_writer import OpenAIWriter
 
@@ -31,7 +32,7 @@ ANSWER_IMAGE_EDGE = 1568  # the longest edge a vision model reads without shrink
 PLACEHOLDER_KEY = "not-needed"  # an endpoint you host yourself does not check a key
 
 
-type Writer = anthropic.Anthropic | OpenAIWriter  # both answer `messages.create` the Anthropic way
+type Writer = anthropic.Anthropic | OpenAIWriter | FaraWriter  # all answer `messages.create` the Anthropic way
 
 
 class WriterError(Exception):
@@ -53,6 +54,10 @@ def make_writer() -> Writer | None:
         if not base_url:
             raise ValueError("CLICKER_WRITER_API=openai needs CLICKER_WRITER_BASE_URL, such as http://localhost:1234/v1")
         return OpenAIWriter(base_url, key)
+    if writer_api() == "fara":
+        if not base_url:
+            raise ValueError("CLICKER_WRITER_API=fara needs CLICKER_WRITER_BASE_URL, such as http://127.0.0.1:11434/v1")
+        return FaraWriter(base_url, key)
     if base_url:
         # Proxies differ in which header they read, so the key goes in both. Passing any key at all
         # also keeps the SDK from adding ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN on its own.
@@ -86,7 +91,7 @@ def _structured(
     if image is not None:
         content.insert(0, _image_block(image))
     extra: dict = {}
-    if custom_writer_endpoint():
+    if custom_writer_endpoint() and writer_api() != "fara":
         # Anthropic enforces output_config. Another endpoint may ignore it without a word, so the
         # schema is spelled out in the prompt as well.
         system = f"{system}\n\nAnswer with a single JSON object and nothing else, matching this schema:\n{json.dumps(schema)}"
@@ -107,7 +112,7 @@ def _structured(
             output_config={"format": {"type": "json_schema", "schema": schema}},
             **extra,
         )
-    except (anthropic.APIError, openai.APIError) as e:
+    except (anthropic.APIError, openai.APIError, FaraWriterError) as e:
         raise WriterError(f"the request failed: {e}") from e
     return checked(parse_json("".join(b.text for b in response.content if b.type == "text")), properties)
 
@@ -205,6 +210,7 @@ def compose_text(
             "submit": {"type": "boolean"},
         },
         max_tokens=256,
+        image=screen.image if writer_api() == "fara" and writer_vision() else None,
     )
     text = data["text"].strip() if data["fill"] else ""
     multiline = screen.field is not None and screen.field.role == "AXTextArea"

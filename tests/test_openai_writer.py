@@ -165,7 +165,7 @@ def test_the_openai_api_needs_its_endpoint_named(clean_env):
 
 def test_an_unknown_api_is_named_in_the_error(clean_env):
     clean_env.setenv("CLICKER_WRITER_API", "openai-compatible")
-    with pytest.raises(ValueError, match="anthropic, openai"):
+    with pytest.raises(ValueError, match="anthropic, openai, fara"):
         writer_api()
 
 

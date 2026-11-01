@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typesafe_computer_use.config import SITES
 from typesafe_computer_use.decide import (
     Decision,
+    back_is_available,
     base_state,
     decide,
     item_criteria,
@@ -12,7 +13,7 @@ from typesafe_computer_use.decide import (
     row_mates,
     site_criteria,
 )
-from typesafe_computer_use.models import AxNode, Guidance
+from typesafe_computer_use.models import AxNode, Field, Guidance
 
 
 def answer(choice, confidence, probabilities=None):
@@ -52,6 +53,18 @@ def test_decision_ignores_an_offscreen_answer_for_any_other_kind():
 def test_kind_criteria_offers_press_offscreen_only_when_there_are_offscreen_controls():
     assert "press_offscreen" not in kind_criteria("Google Chrome", None)
     assert "press_offscreen" in kind_criteria("Google Chrome", None, offscreen=True)
+
+
+def test_kind_criteria_offers_back_only_when_the_last_action_changed_the_screen():
+    assert "go_back" not in kind_criteria("Notepad.exe", None)
+    assert not back_is_available(None, True)
+    assert not back_is_available("typed 'hello' into 'Document'", True)
+    assert not back_is_available("click refused: 'Link' was not clicked", True)
+    assert not back_is_available("clicked 'Link'", False)
+    assert back_is_available("clicked 'Link'", True)
+    assert back_is_available("opened https://example.com/", True)
+    assert back_is_available("typed 'query' and pressed Return", True)
+    assert "go_back" in kind_criteria("Google Chrome", None, can_go_back=True)
 
 
 def test_offscreen_criteria_and_state_name_the_role_and_say_it_is_not_visible(screen, make_item):
@@ -146,6 +159,21 @@ def test_guidance_reaches_the_state_only_when_there_is_some(screen, make_item):
     assert state["current_focus"] == "Click '15 inch'"
     assert state["user_said"] == [{"asked": "13 or 15 inch?", "replied": "15"}]
     assert list(state)[:3] == ["goal", "current_focus", "user_said"]  # beside the goal they refine
+
+
+def test_kind_question_prioritizes_typing_when_a_text_field_is_already_focused(screen):
+    asked = []
+    live = replace(screen, field=Field("AXTextArea", "Text editor", "", "", 0, 0, 400, 300))
+
+    def system_one(state, questions):
+        asked.append(questions["kind"].instructions)
+        return SimpleNamespace(answers={"kind": answer("type_text", 1), "site": answer("none", 1)})
+
+    decide(SimpleNamespace(system_one=system_one), "type a test string", live, [], [], "Google Chrome", None)
+
+    assert "text field 'Text editor' is already focused" in asked[0]
+    assert "choose type_text now" in asked[0]
+    assert "do not click another control or tab first" in asked[0]
 
 
 def test_the_item_question_steers_around_what_was_tried_here_as_the_kind_question_does(screen, make_item):

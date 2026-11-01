@@ -12,7 +12,7 @@ from typesafe_sdk import TypeSafeClient
 from .actions import Context, perform
 from .calls import Calls, MeteredClassifier, MeteredWriter
 from .config import DEFAULT_DELAY, DEFAULT_HANDOFFS, DEFAULT_MIN_CONFIDENCE, DEFAULT_STEPS, MAX_OPTIONS
-from .decide import Decision, decide, offscreen_records
+from .decide import Decision, back_is_available, decide, offscreen_records
 from .models import Abort, Guidance, Item, Screen, Signature, same_screen, signature
 from .perception import OcrCache, capture, perceive
 from .platform_adapter import desktop
@@ -300,7 +300,23 @@ def run_step(cfg: RunConfig, ctx: Context, state: RunState, step: int, log: Log)
     )
 
     with phase(timing, "decide"):
-        decision = decide(ctx.typesafe, cfg.goal, screen, items, state.history, ctx.browser, ctx.email, tried, ctx.guidance)
+        previous_action = state.seen[-1][1] if state.seen else None
+        can_go_back = back_is_available(
+            previous_action,
+            bool(state.seen and state.last is not None and not same_screen(state.seen[-1][0], state.last)),
+        )
+        decision = decide(
+            ctx.typesafe,
+            cfg.goal,
+            screen,
+            items,
+            state.history,
+            ctx.browser,
+            ctx.email,
+            tried,
+            ctx.guidance,
+            can_go_back,
+        )
     by_index = {str(it.index): it for it in items}
     annotate(screen, items, decision.chosen, prefix.with_suffix(".png"))
 

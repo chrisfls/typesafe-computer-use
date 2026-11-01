@@ -321,6 +321,20 @@ def test_failed_verification_restores_original_field_without_touching_new_focus(
     assert values == {original.ref: original.value, other.ref: other.value}
 
 
+def test_an_exact_same_field_readback_confirms_text_without_a_classifier_call(screen, monkeypatch):
+    original = replace(field(ref=object(), value=""), role="AXTextArea")
+    after = replace(field(ref=original.ref, value="new query"), role="AXTextArea")
+    monkeypatch.setattr(actions, "compose_text", lambda *a: Fill("new query"))
+    monkeypatch.setattr(actions, "fill_field", lambda *a: "via accessibility")
+    monkeypatch.setattr(actions.time, "sleep", lambda *a: None)
+    monkeypatch.setattr(desktop, "focused_field", lambda: after)
+    monkeypatch.setattr(actions, "verify_typed", lambda *a: pytest.fail("exact same-field readback is already conclusive"))
+
+    result = actions._type_text(None, replace(screen, field=original), [], context(object()))
+
+    assert result == "typed 'new query' into 'Email' via accessibility (verified 1.00)"
+
+
 def test_text_the_writer_submits_is_followed_by_return_and_left_to_the_next_screen(screen, calls, monkeypatch):
     """Return usually takes the field away, so nothing reads it afterwards and nothing is restored."""
     monkeypatch.setattr(desktop, "press", lambda key, command=False: calls.append(("press", key)))

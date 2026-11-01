@@ -55,6 +55,7 @@ CONTROL_TYPE_TO_ROLE = {
     "CheckBoxControl": "AXCheckBox",
     "ComboBoxControl": "AXComboBox",
     "DataItemControl": "AXCell",
+    "DocumentControl": "AXTextArea",
     "EditControl": "AXTextField",
     "GroupControl": "AXGroup",
     "HyperlinkControl": "AXLink",

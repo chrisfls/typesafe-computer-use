@@ -76,8 +76,13 @@ cp .env.example .env     # fill in the keys
 | `CLICKER_BROWSER` | no | defaults to `Google Chrome` |
 
 `.env` lives at the repo root and is read by every entry point (`clicker`, `clicker-inspect`).
-To run the writer on another model or endpoint (LM Studio, Ollama, any OpenAI-compatible
-server), see [writer endpoints](docs/writer-endpoints.md).
+This fork's `.env.example` selects the local D1 and Fara setup: decisions go to the djev gateway
+at `127.0.0.1:8765`, while Fara runs through Ollama at `127.0.0.1:11434`. Start Ollama and the
+djev gateway before running Jev. Pull `fara1p5-4b-q6k-8k` and `fara1p5-4b-q6k-16k` using the
+Modelfiles in the gateway project; the 16K alias is the default. `CLICKER_WRITER_MODEL` and
+`CLICKER_ANSWER_MODEL` select the field-writer and screen-review contexts independently. Fara's
+adapter accepts field-text proposals and final reviews; Jev remains the only component that acts
+on the desktop. To use another writer provider or endpoint, see [writer endpoints](docs/writer-endpoints.md).
 
 Grant your terminal **Screen Recording** and **Accessibility** in System Settings >
 Privacy & Security. Without the first, captures are wallpaper. Without the second,
